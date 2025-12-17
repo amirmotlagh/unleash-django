@@ -1,5 +1,7 @@
+import logging
+
 from django.conf import settings
-from UnleashClient import UnleashClient
+from UnleashClient import UnleashClient, _RunState
 
 from unleash_django.constants import UNLEASH_TOKEN, UNLEASH_APP_NAME, UNLEASH_URL
 
@@ -16,8 +18,8 @@ def setting(name, default=None):
     """
     return getattr(settings, name, default)
 
-class Client:
 
+class Client:
     def __init__(self):
         custom_headers = setting('UNLEASH_CUSTOM_HEADERS')
         custom_options = setting('UNLEASH_CUSTOM_OPTIONS')
@@ -41,13 +43,20 @@ class Client:
         self._verbose_log_level = setting('UNLEASH_VERBOSE_LOG_LEVEL', 30)
         self._cache = setting('UNLEASH_CACHE')
         self._token = setting('UNLEASH_API_TOKEN', UNLEASH_TOKEN)
+        self._fake_initialize = setting('UNLEASH_FAKE_INITIALIZE', False)
 
     def _update_custom_header(self):
         auth_header = {'Authorization': self._token, }
         return self._custom_headers.update(auth_header)
 
+    def _set_log_severity(self):
+        for logger_name in ['UnleashClient', 'apscheduler.scheduler', 'apscheduler.executors']:
+            logging.getLogger(logger_name).setLevel(self._verbose_log_level)
+
     def connect(self):
         self._update_custom_header()
+        self._set_log_severity()
+
         client = UnleashClient(
             url=self._url,
             app_name=self._app_name,
@@ -68,5 +77,9 @@ class Client:
             cache=self._cache,
         )
 
-        client.initialize_client()
+        if self._fake_initialize:
+            client._run_state = _RunState.INITIALIZED
+        else:
+            client.initialize_client()
+
         return client
